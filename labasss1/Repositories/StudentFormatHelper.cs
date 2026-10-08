@@ -11,26 +11,40 @@ internal static class StudentFormatHelper
     public const int HashLength = 32;
 
     /// <summary>
+    /// Предел размера файла. Настоящий список занимает килобайты; файл больше — заведомо испорчен,
+    /// и читать его в память целиком нельзя (огромный файл обрушил бы программу).
+    /// </summary>
+    public const long MaxFileSize = 64L * 1024 * 1024;
+
+    /// <summary>Считает файл повреждённым, если он больше <see cref="MaxFileSize"/>.</summary>
+    public static void EnsureReasonableSize(string path)
+    {
+        var length = new FileInfo(path).Length;
+        if (length > MaxFileSize)
+            throw new FormatException($"Файл слишком большой ({length / (1024 * 1024)} МБ) — он повреждён.");
+    }
+
+    /// <summary>
     /// Собирает студента из прочитанных полей. Одинаковые проверки во всех форматах гарантируют,
     /// что «прочиталось» означает «данные целы», а не просто «байты разобрались».
     /// </summary>
     public static Student CreateStudent(Guid id, string lastName, string firstName, string? patronymic,
         string group, bool expelled, DateTime? expelledAt, IEnumerable<(string Subject, int Grade)> grades)
     {
-        if (string.IsNullOrWhiteSpace(lastName)) throw new FormatException("У студента не указана фамилия.");
-        if (string.IsNullOrWhiteSpace(firstName)) throw new FormatException($"У студента «{lastName}» не указано имя.");
-        if (string.IsNullOrWhiteSpace(group)) throw new FormatException($"У студента «{lastName}» не указана группа.");
+        if (TextNormalizer.IsBlank(lastName)) throw new FormatException("У студента не указана фамилия.");
+        if (TextNormalizer.IsBlank(firstName)) throw new FormatException($"У студента «{lastName}» не указано имя.");
+        if (TextNormalizer.IsBlank(group)) throw new FormatException($"У студента «{lastName}» не указана группа.");
         if (expelled != expelledAt.HasValue)
             throw new FormatException($"У студента «{lastName}» дата отчисления не соответствует признаку отчисления.");
 
         var student = new Student(lastName, firstName, group, patronymic) { Id = id };
         foreach (var (subject, grade) in grades)
         {
-            if (string.IsNullOrWhiteSpace(subject))
+            if (TextNormalizer.IsBlank(subject))
                 throw new FormatException($"У студента «{lastName}» пустое название предмета.");
             if (grade is < SubjectGrade.MinGrade or > SubjectGrade.MaxGrade)
                 throw new FormatException($"У студента «{lastName}» недопустимая оценка {grade}.");
-            if (student.Grades.Any(g => string.Equals(g.Subject, subject.Trim(), StringComparison.OrdinalIgnoreCase)))
+            if (student.Grades.Any(g => string.Equals(g.Subject, TextNormalizer.Normalize(subject), StringComparison.OrdinalIgnoreCase)))
                 throw new FormatException($"У студента «{lastName}» предмет «{subject}» указан дважды.");
             student.Grades.Add(new SubjectGrade(subject, grade));
         }

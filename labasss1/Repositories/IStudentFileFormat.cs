@@ -3,6 +3,13 @@ using labasss1.Models;
 namespace labasss1.Repositories;
 
 /// <summary>
+/// Содержимое файла списка: студенты и номер сохранения (ревизия). При одном сохранении все три
+/// файла получают одинаковую ревизию, поэтому после сбоя записи видно, какой файл новее.
+/// Ревизия 0 — файл старой версии, где номера ещё не было.
+/// </summary>
+public record StudentFileContent(List<Student> Students, long Revision);
+
+/// <summary>
 /// Один из форматов файла со списком студентов. Все форматы хранят одно и то же содержимое
 /// и взаимозаменяемы: прочитанное из любого из них можно записать в любой другой.
 /// </summary>
@@ -18,7 +25,7 @@ public interface IStudentFileFormat
     /// Читает список студентов. Повреждённый файл — <see cref="FormatException"/>,
     /// отсутствующий — <see cref="FileNotFoundException"/>.
     /// </summary>
-    List<Student> Read(string path);
+    StudentFileContent Read(string path);
 
-    void Write(string path, IReadOnlyCollection<Student> students);
+    void Write(string path, StudentFileContent content);
 }

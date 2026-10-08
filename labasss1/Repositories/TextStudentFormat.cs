@@ -7,9 +7,11 @@ namespace labasss1.Repositories;
 
 /// <summary>
 /// Текстовый формат (.txt): StreamWriter/StreamReader, каждый студент — блок строк «Ключ=Значение».
-/// Строка Count в начале позволяет заметить обрезанный файл (в файлах старой версии её может не быть).
+/// Строка Count в начале позволяет заметить обрезанный файл, Revision — номер сохранения
+/// (в файлах старой версии этих строк может не быть).
 /// <code>
 /// # Список студентов
+/// Revision=638640000000000000
 /// Count=1
 ///
 /// [Student]
@@ -28,16 +30,20 @@ public class TextStudentFormat : IStudentFileFormat
 {
     private const string StudentHeader = "[Student]";
     private const string CountKey = "Count";
+    private const string RevisionKey = "Revision";
     private const char GradeSeparator = '|';
     private const string DateFormat = "yyyy-MM-dd HH:mm:ss";
 
     public string Extension => ".txt";
     public string Description => "текстовый";
 
-    public List<Student> Read(string path)
+    public StudentFileContent Read(string path)
     {
+        StudentFormatHelper.EnsureReasonableSize(path);
+
         var students = new List<Student>();
         int? expectedCount = null;
+        long? revision = null;
         StudentRecord? current = null;
 
         using var reader = new StreamReader(path, Encoding.UTF8);
@@ -63,12 +69,23 @@ public class TextStudentFormat : IStudentFileFormat
 
             if (current == null)
             {
-                // До первого студента допустима только строка с количеством.
-                if (key != CountKey || expectedCount != null)
+                // До первого студента допустимы только заголовочные строки, каждая не более одного раза.
+                if (key == CountKey && expectedCount == null)
+                {
+                    if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var count))
+                        throw new FormatException($"Строка {lineNumber}: некорректное количество студентов.");
+                    expectedCount = count;
+                }
+                else if (key == RevisionKey && revision == null)
+                {
+                    if (!long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var rev))
+                        throw new FormatException($"Строка {lineNumber}: некорректный номер сохранения.");
+                    revision = rev;
+                }
+                else
+                {
                     throw new FormatException($"Строка {lineNumber}: данные вне блока {StudentHeader}.");
-                if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var count))
-                    throw new FormatException($"Строка {lineNumber}: некорректное количество студентов.");
-                expectedCount = count;
+                }
                 continue;
             }
 
@@ -82,12 +99,12 @@ public class TextStudentFormat : IStudentFileFormat
             throw new FormatException(
                 $"Заявлено студентов: {expectedCount}, прочитано: {students.Count} — файл обрезан или испорчен.");
 
-        return StudentFormatHelper.EnsureUniqueIds(students);
+        return new StudentFileContent(StudentFormatHelper.EnsureUniqueIds(students), revision ?? 0);
     }
 
-    public void Write(string path, IReadOnlyCollection<Student> students)
+    public void Write(string path, StudentFileContent content)
     {
-        var text = Serialize(students);
+        var text = Serialize(content.Students, content.Revision);
         StudentFormatHelper.WriteAtomically(path, stream =>
         {
             using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
@@ -96,13 +113,15 @@ public class TextStudentFormat : IStudentFileFormat
     }
 
     /// <summary>
-    /// Текстовое представление списка. Используется и для сравнения содержимого файлов
+    /// Текстовое представление списка. Без ревизии используется для сравнения содержимого файлов
     /// разных форматов: одинаковый текст — одинаковые данные.
     /// </summary>
-    public static string Serialize(IReadOnlyCollection<Student> students)
+    public static string Serialize(IReadOnlyCollection<Student> students, long? revision = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("# Список студентов");
+        if (revision != null)
+            sb.AppendLine($"{RevisionKey}={revision.Value.ToString(CultureInfo.InvariantCulture)}");
         sb.AppendLine($"{CountKey}={students.Count}");
 
         foreach (var s in students)

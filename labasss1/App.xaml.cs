@@ -26,14 +26,16 @@ public partial class App : Application
         var outputPath = restore && !string.IsNullOrWhiteSpace(state.OutputPath) ? state.OutputPath : defaultPath;
 
         var messages = new List<string>();
-        var loaded = TryLoad(repository, inputPath, messages, out var error);
+        // Пустые файлы создаём только для набора по умолчанию. Если пропал сохранённый набор, пустой
+        // список нельзя открывать: первое же сохранение затёрло бы им выходной набор.
+        var loaded = TryLoad(repository, inputPath, createIfMissing: inputPath == defaultPath, messages, out var error);
         if (loaded == null && inputPath != defaultPath)
         {
             // Сохранённый путь больше не читается — не застреваем на нём, берём набор по умолчанию.
             messages.Add($"Не удалось загрузить сохранённый набор «{inputPath}»: {error} Загружен набор по умолчанию.");
             restore = false;
             inputPath = outputPath = defaultPath;
-            loaded = TryLoad(repository, inputPath, messages, out error);
+            loaded = TryLoad(repository, inputPath, createIfMissing: true, messages, out error);
         }
 
         if (loaded == null)
@@ -71,11 +73,11 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Загружает набор файлов; если файлов нет — сразу создаёт пустые.
+    /// Загружает набор файлов; если файлов нет и <paramref name="createIfMissing"/> — сразу создаёт пустые.
     /// Возвращает null, если набор прочитать нельзя (текст ошибки — в <paramref name="error"/>).
     /// </summary>
     private static List<Models.Student>? TryLoad(StudentFileRepository repository, string path,
-        List<string> messages, out string? error)
+        bool createIfMissing, List<string> messages, out string? error)
     {
         error = null;
         try
@@ -84,6 +86,11 @@ public partial class App : Application
             messages.AddRange(result.Messages);
             return result.Students;
         }
+        catch (FileNotFoundException ex) when (!createIfMissing)
+        {
+            error = ex.Message;
+            return null;
+        }
         catch (FileNotFoundException)
         {
             try
@@ -91,7 +98,8 @@ public partial class App : Application
                 repository.Save(path, []);
                 messages.Add("Файлы списка не найдены — созданы пустые.");
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                           or ArgumentException or NotSupportedException)
             {
                 messages.Add($"Не удалось создать файлы списка: {ex.Message}");
             }

@@ -26,7 +26,7 @@ public class SubjectGrade : INotifyPropertyChanged
     public string Subject
     {
         get => _subject;
-        set => SetField(ref _subject, value.Trim());
+        set => SetField(ref _subject, TextNormalizer.Normalize(value));
     }
 
     /// <summary>Оценка по пятибалльной шкале (2–5).</summary>

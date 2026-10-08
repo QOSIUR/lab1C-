@@ -8,9 +8,9 @@ public record StudentLoadResult(List<Student> Students, IReadOnlyList<string> Me
 
 /// <summary>
 /// Хранит список студентов сразу в трёх взаимозаменяемых файлах с одним именем:
-/// текстовом (.txt), бинарном (.bin) и байтовом (.dat). Сохранение всегда пишет все три.
-/// При загрузке отсутствующий, повреждённый или отличающийся от остальных файл
-/// сразу же создаётся заново по содержимому остальных.
+/// текстовом (.txt), бинарном (.bin) и байтовом (.dat). Сохранение всегда пишет все три
+/// и проверяет, что записалось. При загрузке и проверке (<see cref="Repair"/>) отсутствующий,
+/// повреждённый, устаревший или отличающийся файл сразу же создаётся заново по остальным.
 /// </summary>
 public class StudentFileRepository
 {
@@ -20,9 +20,6 @@ public class StudentFileRepository
         new BinaryStudentFormat(),
         new ByteStudentFormat(),
     ];
-
-    /// <summary>Расширения всех форматов — для фильтра диалога выбора файла.</summary>
-    public IEnumerable<string> Extensions => _formats.Select(f => f.Extension);
 
     /// <summary>
     /// Пути трёх файлов набора. Можно передать путь к любому из них (или без расширения) —
@@ -37,60 +34,71 @@ public class StudentFileRepository
     /// </summary>
     public StudentLoadResult Load(string path)
     {
-        var attempts = _formats.Select(f => TryRead(PathFor(path, f), f)).ToList();
-        var valid = attempts.Where(a => a.Students != null).ToList();
-
-        if (valid.Count == 0)
+        var attempts = ReadAll(path);
+        var reference = ChooseReference(attempts);
+        if (reference == null)
         {
-            if (attempts.All(a => a.Missing))
+            if (attempts.All(a => a.State == FileState.Missing))
                 throw new FileNotFoundException(
-                    $"Не найден ни один файл списка: {string.Join(", ", attempts.Select(a => Path.GetFileName(a.Path)))}.");
+                    $"Не найден ни один файл списка: {string.Join(", ", attempts.Select(a => a.Name))}.");
 
-            throw new FormatException("Все файлы списка повреждены, восстановить не из чего:\n" +
-                                      string.Join("\n", attempts.Select(a => $"{Path.GetFileName(a.Path)}: {a.Problem}")));
+            throw new FormatException("Все файлы списка повреждены или недоступны, восстановить не из чего:\n" +
+                                      string.Join("\n", attempts.Select(a => $"{a.Name}: {a.Problem}")));
         }
 
-        // Эталон — содержимое, на котором сходится большинство файлов; при равенстве — самый свежий.
-        var reference = valid
-            .GroupBy(a => a.Fingerprint)
-            .OrderByDescending(g => g.Count())
-            .ThenByDescending(g => g.Max(a => a.LastWriteUtc))
-            .First();
-        var students = reference.First().Students!;
-
-        var messages = new List<string>();
-        foreach (var attempt in attempts.Where(a => a.Fingerprint != reference.Key))
-        {
-            var reason = attempt.Missing ? "отсутствовал"
-                : attempt.Students == null ? $"повреждён ({attempt.Problem})"
-                : "отличался от остальных";
-            var name = Path.GetFileName(attempt.Path);
-            try
-            {
-                attempt.Format.Write(attempt.Path, students);
-                messages.Add($"Файл {name} {reason} — создан заново.");
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                messages.Add($"Файл {name} {reason}, но пересоздать его не удалось: {ex.Message}");
-            }
-        }
-
-        return new StudentLoadResult(students, messages);
+        return new StudentLoadResult(reference.Content!.Students, RepairOthers(attempts, reference));
     }
 
-    /// <summary>Записывает список во все три файла набора.</summary>
+    /// <summary>
+    /// Проверяет набор и чинит файлы, которые отсутствуют, повреждены или расходятся с остальными.
+    /// Если исправных файлов не осталось совсем, записывает <paramref name="fallback"/>
+    /// (список, который сейчас открыт в программе), а без него — только сообщает о проблеме.
+    /// Возвращает сообщения о том, что было сделано; пустой список — набор в порядке.
+    /// </summary>
+    public IReadOnlyList<string> Repair(string path, IReadOnlyCollection<Student>? fallback)
+    {
+        var attempts = ReadAll(path);
+        var reference = ChooseReference(attempts);
+        if (reference != null)
+            return RepairOthers(attempts, reference);
+
+        if (fallback == null)
+            return attempts.All(a => a.State == FileState.Missing)
+                ? []
+                : [$"Все файлы набора «{Path.GetFileNameWithoutExtension(path)}» повреждены или недоступны — восстановить не из чего."];
+
+        try
+        {
+            Save(path, fallback);
+            return [$"Файлы набора «{Path.GetFileNameWithoutExtension(path)}» пропали или повреждены — созданы заново из открытого списка."];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [$"Файлы набора пропали или повреждены, создать заново не удалось: {ex.Message}"];
+        }
+    }
+
+    /// <summary>
+    /// Записывает список во все три файла набора с новым номером сохранения, затем читает их
+    /// обратно и сверяет. Если хоть один файл не записался или не совпал — <see cref="IOException"/>.
+    /// </summary>
     public void Save(string path, IReadOnlyCollection<Student> students)
     {
+        var content = new StudentFileContent(students.ToList(), NextRevision(path));
+        var expected = Fingerprint(content.Students);
+
         var errors = new List<string>();
         foreach (var format in _formats)
         {
             var filePath = PathFor(path, format);
             try
             {
-                format.Write(filePath, students);
+                format.Write(filePath, content);
+                var written = format.Read(filePath);
+                if (written.Revision != content.Revision || Fingerprint(written.Students) != expected)
+                    errors.Add($"{Path.GetFileName(filePath)}: после записи содержимое не совпадает");
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException)
             {
                 errors.Add($"{Path.GetFileName(filePath)}: {ex.Message}");
             }
@@ -100,30 +108,115 @@ public class StudentFileRepository
             throw new IOException(string.Join("; ", errors));
     }
 
+    /// <summary>
+    /// Номер нового сохранения: текущее время, но строго больше номеров в уже существующих файлах —
+    /// на случай, если часы компьютера перевели назад.
+    /// </summary>
+    private long NextRevision(string path)
+    {
+        var existing = ReadAll(path).Where(a => a.Content != null).Select(a => a.Content!.Revision).DefaultIfEmpty(0).Max();
+        return Math.Max(DateTime.UtcNow.Ticks, existing + 1);
+    }
+
+    private List<ReadAttempt> ReadAll(string path) =>
+        _formats.Select(f => TryRead(PathFor(path, f), f)).ToList();
+
+    /// <summary>
+    /// Эталон, по которому чинятся остальные файлы:
+    /// 1) самое новое сохранение (если запись прервалась, новые данные есть только в части файлов);
+    /// 2) среди файлов одного сохранения — содержимое, на котором сходится большинство;
+    /// 3) при равенстве — файл, изменённый последним.
+    /// </summary>
+    private static ReadAttempt? ChooseReference(List<ReadAttempt> attempts)
+    {
+        var valid = attempts.Where(a => a.Content != null).ToList();
+        if (valid.Count == 0) return null;
+
+        var newest = valid.Max(a => a.Content!.Revision);
+        return valid
+            .Where(a => a.Content!.Revision == newest)
+            .GroupBy(a => a.Fingerprint)
+            .OrderByDescending(g => g.Count())
+            .ThenByDescending(g => g.Max(a => a.LastWriteUtc))
+            .First()
+            .OrderByDescending(a => a.LastWriteUtc)
+            .First();
+    }
+
+    /// <summary>Перезаписывает по эталону все файлы, которые с ним не совпадают.</summary>
+    private static List<string> RepairOthers(List<ReadAttempt> attempts, ReadAttempt reference)
+    {
+        var content = reference.Content!;
+        var messages = new List<string>();
+        foreach (var attempt in attempts)
+        {
+            if (attempt.Content != null && attempt.Content.Revision == content.Revision &&
+                attempt.Fingerprint == reference.Fingerprint)
+                continue;
+
+            var reason = attempt.State switch
+            {
+                FileState.Missing => "отсутствовал",
+                FileState.Corrupt => $"повреждён ({attempt.Problem})",
+                FileState.Unavailable => $"недоступен ({attempt.Problem})",
+                _ when attempt.Content!.Revision < content.Revision => "устарел (не записался при последнем сохранении)",
+                _ => "отличался от остальных",
+            };
+            try
+            {
+                attempt.Format.Write(attempt.Path, content);
+                messages.Add($"Файл {attempt.Name} {reason} — создан заново.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                messages.Add($"Файл {attempt.Name} {reason}, пересоздать его не удалось: {ex.Message}");
+            }
+        }
+
+        return messages;
+    }
+
     private static string PathFor(string path, IStudentFileFormat format) =>
         Path.ChangeExtension(path.Trim(), format.Extension);
 
+    private static string Fingerprint(IReadOnlyCollection<Student> students) => TextStudentFormat.Serialize(students);
+
     private static ReadAttempt TryRead(string path, IStudentFileFormat format)
     {
-        if (!File.Exists(path))
-            return new ReadAttempt(path, format, null, true, "файл отсутствует", DateTime.MinValue);
-
         try
         {
-            var students = format.Read(path);
-            return new ReadAttempt(path, format, students, false, null, File.GetLastWriteTimeUtc(path));
+            if (!File.Exists(path))
+                return new ReadAttempt(path, format, null, FileState.Missing, "файл отсутствует", DateTime.MinValue);
+
+            var content = format.Read(path);
+            return new ReadAttempt(path, format, content, FileState.Ok, null, File.GetLastWriteTimeUtc(path));
         }
-        catch (Exception ex) when (ex is FormatException or IOException or UnauthorizedAccessException
-                                       or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && ex is not FileNotFoundException)
         {
-            return new ReadAttempt(path, format, null, false, ex.Message, DateTime.MinValue);
+            // Файл есть, но прочитать его нельзя (занят другой программой, нет прав) — это не повреждение.
+            return new ReadAttempt(path, format, null, FileState.Unavailable, ex.Message, DateTime.MinValue);
+        }
+        catch (FileNotFoundException)
+        {
+            // Файл удалили между проверкой и чтением.
+            return new ReadAttempt(path, format, null, FileState.Missing, "файл отсутствует", DateTime.MinValue);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Любая другая ошибка разбора (в том числе неожиданная) означает, что файл повреждён:
+            // его нужно восстановить по остальным, а не ронять программу.
+            return new ReadAttempt(path, format, null, FileState.Corrupt, ex.Message, DateTime.MinValue);
         }
     }
 
-    private record ReadAttempt(string Path, IStudentFileFormat Format, List<Student>? Students, bool Missing,
+    private enum FileState { Ok, Missing, Corrupt, Unavailable }
+
+    private record ReadAttempt(string Path, IStudentFileFormat Format, StudentFileContent? Content, FileState State,
         string? Problem, DateTime LastWriteUtc)
     {
+        public string Name => System.IO.Path.GetFileName(Path);
+
         /// <summary>Текстовое представление содержимого: равные отпечатки — одинаковые данные.</summary>
-        public string? Fingerprint { get; } = Students == null ? null : TextStudentFormat.Serialize(Students);
+        public string? Fingerprint { get; } = Content == null ? null : TextStudentFormat.Serialize(Content.Students);
     }
 }

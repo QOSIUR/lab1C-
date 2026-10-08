@@ -17,6 +17,7 @@ public class MainViewModel : ViewModelBase
     private readonly StudentFileRepository _repository;
     private readonly IUiService _ui;
     private readonly ObservableCollection<Student> _students;
+    private StudentSetWatcher? _watcher;
     private StudentCardViewModel _currentCard = StudentCardViewModel.CreateEmpty();
     private string? _errorMessage;
     private string? _statusMessage;
@@ -64,6 +65,7 @@ public class MainViewModel : ViewModelBase
         AboutCommand = new RelayCommand(_ui.ShowAbout);
 
         ShowFirstOrEmpty();
+        WatchFiles();
     }
 
     public StudentCardViewModel CurrentCard
@@ -81,14 +83,71 @@ public class MainViewModel : ViewModelBase
     public string InputPath
     {
         get => _inputPath;
-        set => SetField(ref _inputPath, value);
+        set { if (SetField(ref _inputPath, value)) WatchFiles(); }
     }
 
     /// <summary>Путь к выходному набору файлов: изменения сохраняются сразу во все три формата.</summary>
     public string OutputPath
     {
         get => _outputPath;
-        set => SetField(ref _outputPath, value);
+        set { if (SetField(ref _outputPath, value)) WatchFiles(); }
+    }
+
+    /// <summary>Начинает следить за файлами входного и выходного наборов (вместо прежних).</summary>
+    private void WatchFiles()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+        try
+        {
+            var paths = new[] { InputPath, OutputPath }
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .SelectMany(_repository.GetFilePaths);
+            _watcher = new StudentSetWatcher(paths, CheckFiles);
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException
+                                       or UnauthorizedAccessException)
+        {
+            // Путь ещё вводится или некорректен — следить пока не за чем.
+        }
+    }
+
+    /// <summary>
+    /// Файлы набора изменились снаружи, пока программа работает: сразу же восстанавливаем
+    /// отсутствующие и повреждённые по остальным. Если выходной набор пропал целиком —
+    /// записываем его из открытого списка.
+    /// </summary>
+    private void CheckFiles()
+    {
+        var messages = new List<string>();
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(OutputPath))
+                messages.AddRange(_repository.Repair(OutputPath, fallback: _students));
+            if (!string.IsNullOrWhiteSpace(InputPath) && !SameSet(InputPath, OutputPath))
+                messages.AddRange(_repository.Repair(InputPath, fallback: null));
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException
+                                       or UnauthorizedAccessException)
+        {
+            messages.Add($"Не удалось проверить файлы списка: {ex.Message}");
+        }
+
+        if (messages.Count > 0)
+            StatusMessage = string.Join(" ", messages);
+    }
+
+    private bool SameSet(string a, string b)
+    {
+        try
+        {
+            return string.Equals(Path.GetFullPath(_repository.GetFilePaths(a)[0]),
+                Path.GetFullPath(_repository.GetFilePaths(b)[0]), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
     }
 
     public string? ErrorMessage
@@ -331,8 +390,8 @@ public class MainViewModel : ViewModelBase
     {
         if (AllowSameLastName) return null;
 
-        var lastName = card.LastName.Trim();
-        var group = card.Group.Trim();
+        var lastName = TextNormalizer.Normalize(card.LastName);
+        var group = TextNormalizer.Normalize(card.Group);
         if (card.Source is { } source && SameText(source.LastName, lastName) && SameText(source.Group, group))
             return null;
 
@@ -346,7 +405,7 @@ public class MainViewModel : ViewModelBase
     /// <summary>Обучающийся студент той же группы с той же фамилией (без учёта регистра).</summary>
     private Student? FindNamesake(string lastName, string group, Student? except) =>
         _students.FirstOrDefault(s => !s.IsExpelled && s != except &&
-                                      SameText(s.LastName, lastName.Trim()) && SameText(s.Group, group.Trim()));
+                                      SameText(s.LastName, TextNormalizer.Normalize(lastName)) && SameText(s.Group, TextNormalizer.Normalize(group)));
 
     private static bool SameText(string a, string b) => string.Equals(a, b, StringComparison.CurrentCultureIgnoreCase);
 

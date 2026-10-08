@@ -7,24 +7,25 @@ namespace labasss1.Repositories;
 /// <summary>
 /// Бинарный формат (.bin): типизированные значения через BinaryWriter/BinaryReader.
 /// <code>
-/// int32  сигнатура "STDB"        int32 версия      int32 количество студентов
+/// int32  сигнатура "STDB"   int32 версия (2)   int64 номер сохранения   int32 количество студентов
 /// студент: byte[16] Id, string Фамилия, string Имя, string Отчество, string Группа,
 ///          bool Отчислен, int64 дата отчисления в тиках (0 — нет),
 ///          int32 количество оценок, затем пары (string Предмет, int32 Оценка)
 /// byte[32] SHA-256 всего, что выше
 /// </code>
-/// Строки BinaryWriter пишет в UTF-8 с префиксом длины.
+/// Строки BinaryWriter пишет в UTF-8 с префиксом длины. В версии 1 номера сохранения нет.
 /// </summary>
 public class BinaryStudentFormat : IStudentFileFormat
 {
     private const int Signature = 0x42445453; // "STDB" в little-endian
-    private const int Version = 1;
+    private const int Version = 2;
 
     public string Extension => ".bin";
     public string Description => "бинарный";
 
-    public List<Student> Read(string path)
+    public StudentFileContent Read(string path)
     {
+        StudentFormatHelper.EnsureReasonableSize(path);
         var content = File.ReadAllBytes(path);
         var dataLength = StudentFormatHelper.VerifyHash(content);
 
@@ -33,7 +34,10 @@ public class BinaryStudentFormat : IStudentFileFormat
         {
             if (reader.ReadInt32() != Signature) throw new FormatException("Неверная сигнатура файла.");
             var version = reader.ReadInt32();
-            if (version != Version) throw new FormatException($"Неподдерживаемая версия файла: {version}.");
+            if (version is not (1 or Version)) throw new FormatException($"Неподдерживаемая версия файла: {version}.");
+
+            var revision = version >= 2 ? reader.ReadInt64() : 0;
+            if (revision < 0) throw new FormatException("Некорректный номер сохранения.");
 
             var count = reader.ReadInt32();
             if (count < 0) throw new FormatException("Отрицательное количество студентов.");
@@ -44,23 +48,30 @@ public class BinaryStudentFormat : IStudentFileFormat
 
             if (reader.BaseStream.Position != dataLength)
                 throw new FormatException("После списка студентов остались лишние данные.");
-            return StudentFormatHelper.EnsureUniqueIds(students);
+            return new StudentFileContent(StudentFormatHelper.EnsureUniqueIds(students), revision);
         }
         catch (EndOfStreamException)
         {
             throw new FormatException("Файл неожиданно закончился.");
         }
+        catch (IOException ex)
+        {
+            // Данные уже в памяти, так что IOException здесь — это испорченная структура
+            // (например, отрицательная длина строки), а не проблема доступа к файлу.
+            throw new FormatException(ex.Message, ex);
+        }
     }
 
-    public void Write(string path, IReadOnlyCollection<Student> students)
+    public void Write(string path, StudentFileContent content)
     {
         using var buffer = new MemoryStream();
         using (var writer = new BinaryWriter(buffer, Encoding.UTF8, leaveOpen: true))
         {
             writer.Write(Signature);
             writer.Write(Version);
-            writer.Write(students.Count);
-            foreach (var s in students)
+            writer.Write(content.Revision);
+            writer.Write(content.Students.Count);
+            foreach (var s in content.Students)
                 WriteStudent(writer, s);
         }
 

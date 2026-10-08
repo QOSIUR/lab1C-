@@ -26,7 +26,7 @@ public class Student : INotifyPropertyChanged
         get => _lastName;
         set
         {
-            if (SetField(ref _lastName, value.Trim()))
+            if (SetField(ref _lastName, TextNormalizer.Normalize(value)))
                 OnPropertyChanged(nameof(FullName));
         }
     }
@@ -37,7 +37,7 @@ public class Student : INotifyPropertyChanged
         get => _firstName;
         set
         {
-            if (SetField(ref _firstName, value.Trim()))
+            if (SetField(ref _firstName, TextNormalizer.Normalize(value)))
                 OnPropertyChanged(nameof(FullName));
         }
     }
@@ -48,7 +48,8 @@ public class Student : INotifyPropertyChanged
         get => _patronymic;
         set
         {
-            var normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            var text = TextNormalizer.Normalize(value);
+            var normalized = text.Length == 0 ? null : text;
             if (SetField(ref _patronymic, normalized))
                 OnPropertyChanged(nameof(FullName));
         }
@@ -58,7 +59,7 @@ public class Student : INotifyPropertyChanged
     public string Group
     {
         get => _group;
-        set => SetField(ref _group, value.Trim());
+        set => SetField(ref _group, TextNormalizer.Normalize(value));
     }
 
     /// <summary>Оценки по предметам (предметов может быть несколько).</summary>
@@ -102,7 +103,7 @@ public class Student : INotifyPropertyChanged
     public void SetGrade(string subject, int grade)
     {
         var existing = Grades.FirstOrDefault(g =>
-            string.Equals(g.Subject, subject.Trim(), StringComparison.OrdinalIgnoreCase));
+            string.Equals(g.Subject, TextNormalizer.Normalize(subject), StringComparison.OrdinalIgnoreCase));
 
         if (existing is null)
         {

@@ -8,24 +8,28 @@ namespace labasss1.Repositories;
 /// Байтовый формат (.dat): файл читается и пишется через FileStream массивами байтов,
 /// каждое значение раскладывается на байты вручную (числа — big-endian).
 /// <code>
-/// byte[4] сигнатура "STDT"   byte версия   byte[4] количество студентов
+/// byte[4] сигнатура "STDT"   byte версия (2)   byte[8] номер сохранения   byte[4] количество студентов
 /// студент: byte[16] Id, 4 строки (Фамилия, Имя, Отчество, Группа),
 ///          byte Отчислен (0/1), byte[8] дата отчисления в тиках (0 — нет),
 ///          byte[4] количество оценок, затем пары (строка Предмет, byte Оценка)
 /// строка:  byte[4] длина в байтах + байты UTF-8
 /// byte[32] SHA-256 всего, что выше
 /// </code>
+/// В версии 1 номера сохранения нет.
 /// </summary>
 public class ByteStudentFormat : IStudentFileFormat
 {
     private static readonly byte[] Signature = "STDT"u8.ToArray();
-    private const byte Version = 1;
+    private const byte Version = 2;
 
     public string Extension => ".dat";
     public string Description => "байтовый";
 
-    public List<Student> Read(string path)
+    public StudentFileContent Read(string path)
     {
+        // Без этой проверки файл больше 2 ГБ обрушивал программу при выделении массива.
+        StudentFormatHelper.EnsureReasonableSize(path);
+
         byte[] content;
         using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
@@ -45,7 +49,10 @@ public class ByteStudentFormat : IStudentFileFormat
         if (!reader.ReadBytes(Signature.Length).SequenceEqual(Signature))
             throw new FormatException("Неверная сигнатура файла.");
         var version = reader.ReadByte();
-        if (version != Version) throw new FormatException($"Неподдерживаемая версия файла: {version}.");
+        if (version is not (1 or Version)) throw new FormatException($"Неподдерживаемая версия файла: {version}.");
+
+        var revision = version >= 2 ? reader.ReadInt64() : 0;
+        if (revision < 0) throw new FormatException("Некорректный номер сохранения.");
 
         var count = reader.ReadInt32();
         if (count < 0) throw new FormatException("Отрицательное количество студентов.");
@@ -55,16 +62,17 @@ public class ByteStudentFormat : IStudentFileFormat
             students.Add(ReadStudent(reader));
 
         if (!reader.AtEnd) throw new FormatException("После списка студентов остались лишние данные.");
-        return StudentFormatHelper.EnsureUniqueIds(students);
+        return new StudentFileContent(StudentFormatHelper.EnsureUniqueIds(students), revision);
     }
 
-    public void Write(string path, IReadOnlyCollection<Student> students)
+    public void Write(string path, StudentFileContent content)
     {
         var bytes = new List<byte>();
         bytes.AddRange(Signature);
         bytes.Add(Version);
-        AddInt32(bytes, students.Count);
-        foreach (var s in students)
+        AddInt64(bytes, content.Revision);
+        AddInt32(bytes, content.Students.Count);
+        foreach (var s in content.Students)
             AddStudent(bytes, s);
 
         var data = bytes.ToArray();

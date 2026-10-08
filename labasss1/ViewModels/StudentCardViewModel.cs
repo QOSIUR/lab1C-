@@ -79,9 +79,9 @@ public class StudentCardViewModel : ViewModelBase
     /// а очищенная карточка существующего студента при переходе удаляет его запись.
     /// </summary>
     public bool IsBlank =>
-        string.IsNullOrWhiteSpace(LastName) && string.IsNullOrWhiteSpace(FirstName) &&
-        string.IsNullOrWhiteSpace(Patronymic) && string.IsNullOrWhiteSpace(Group) &&
-        Grades.All(g => string.IsNullOrWhiteSpace(g.Subject));
+        TextNormalizer.IsBlank(LastName) && TextNormalizer.IsBlank(FirstName) &&
+        TextNormalizer.IsBlank(Patronymic) && TextNormalizer.IsBlank(Group) &&
+        Grades.All(g => TextNormalizer.IsBlank(g.Subject));
 
     /// <summary>Карточка существующего студента очищена — при переходе запись будет стёрта.</summary>
     public bool IsMarkedForDeletion => !IsNew && IsBlank;
@@ -147,16 +147,16 @@ public class StudentCardViewModel : ViewModelBase
     /// <summary>Возвращает текст ошибки или null, если карточку можно сохранить.</summary>
     public string? Validate()
     {
-        if (string.IsNullOrWhiteSpace(LastName)) return "Укажите фамилию.";
-        if (string.IsNullOrWhiteSpace(FirstName)) return "Укажите имя.";
-        if (string.IsNullOrWhiteSpace(Group)) return "Укажите группу.";
+        if (TextNormalizer.IsBlank(LastName)) return "Укажите фамилию.";
+        if (TextNormalizer.IsBlank(FirstName)) return "Укажите имя.";
+        if (TextNormalizer.IsBlank(Group)) return "Укажите группу.";
 
-        var emptyRow = Grades.FirstOrDefault(g => string.IsNullOrWhiteSpace(g.Subject));
+        var emptyRow = Grades.FirstOrDefault(g => TextNormalizer.IsBlank(g.Subject));
         if (emptyRow != null)
             return $"Укажите название предмета в строке {Grades.IndexOf(emptyRow) + 1} таблицы оценок " +
                    "или удалите эту строку.";
 
-        var subjects = Grades.Select(g => g.Subject.Trim()).ToList();
+        var subjects = Grades.Select(g => TextNormalizer.Normalize(g.Subject)).ToList();
         var duplicate = subjects
             .GroupBy(s => s, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(grp => grp.Count() > 1);
@@ -179,7 +179,7 @@ public class StudentCardViewModel : ViewModelBase
 
         student.Grades.Clear();
         foreach (var row in Grades)
-            student.Grades.Add(new SubjectGrade(row.Subject.Trim(), row.Grade));
+            student.Grades.Add(new SubjectGrade(row.Subject, row.Grade));
 
         return student;
     }
