@@ -1,0 +1,238 @@
+<Window x:Class="labasss1.Views.HelpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Справка — Карточки студентов" Height="600" Width="720" MinHeight="350" MinWidth="450"
+        WindowStartupLocation="CenterOwner"
+        Style="{StaticResource ClassicWindowStyle}">
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Bottom" Margin="8">
+            <Button DockPanel.Dock="Right" Content="Закрыть" IsCancel="True" IsDefault="True" Click="Close_Click" />
+            <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                       Text="Подсказка: наведите указатель на любую кнопку или поле — появится краткое описание." />
+        </DockPanel>
+
+        <!-- Слева — разделы, справа — текст выбранного раздела -->
+        <TabControl Margin="8,8,8,0" TabStripPlacement="Left">
+            <TabControl.Resources>
+                <Style TargetType="FlowDocumentScrollViewer">
+                    <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+                    <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />
+                </Style>
+                <Style TargetType="FlowDocument">
+                    <Setter Property="FontFamily" Value="Tahoma" />
+                    <Setter Property="FontSize" Value="12" />
+                    <Setter Property="PagePadding" Value="12" />
+                    <Setter Property="TextAlignment" Value="Left" />
+                </Style>
+                <Style TargetType="Paragraph">
+                    <Setter Property="Margin" Value="0,0,0,8" />
+                </Style>
+                <Style x:Key="Heading" TargetType="Paragraph">
+                    <Setter Property="FontSize" Value="15" />
+                    <Setter Property="FontWeight" Value="Bold" />
+                    <Setter Property="Margin" Value="0,0,0,10" />
+                </Style>
+                <Style TargetType="List">
+                    <Setter Property="Margin" Value="0,0,0,8" />
+                    <Setter Property="Padding" Value="20,0,0,0" />
+                </Style>
+            </TabControl.Resources>
+
+            <TabItem Header="Обзор">
+                <FlowDocumentScrollViewer>
+                    <FlowDocument>
+                        <Paragraph Style="{StaticResource Heading}">Карточки студентов</Paragraph>
+                        <Paragraph>
+                            Программа ведёт список студентов в виде информационных карточек: одна карточка — один студент.
+                            На карточке указываются фамилия, имя, отчество, группа и оценки по предметам.
+                        </Paragraph>
+                        <Paragraph>Главное окно состоит из частей (сверху вниз):</Paragraph>
+                        <List>
+                            <ListItem><Paragraph><Bold>Меню</Bold> — все функции программы, с горячими клавишами.</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>Файлы списка</Bold> — откуда читать студентов и куда их сохранять.</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>Карточка студента</Bold> — данные текущего студента.</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>Флажки</Bold> — настройки поведения программы.</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>Кнопки</Bold> — переход по карточкам и действия со студентами.</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>Строка состояния</Bold> — номер карточки, сообщения и ошибки (ошибки — красным).</Paragraph></ListItem>
+                        </List>
+                        <Paragraph>
+                            Обязательные поля отмечены звёздочкой (*). Если что-то заполнено неверно, программа не даст
+                            перейти на другую карточку и напишет причину в строке состояния.
+                        </Paragraph>
+                    </FlowDocument>
+                </FlowDocumentScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Файлы">
+                <FlowDocumentScrollViewer>
+                    <FlowDocument>
+                        <Paragraph Style="{StaticResource Heading}">Файлы списка студентов</Paragraph>
+                        <Paragraph>
+                            Список хранится сразу в <Bold>трёх файлах</Bold> с одинаковым именем и разными расширениями:
+                        </Paragraph>
+                        <List>
+                            <ListItem><Paragraph><Bold>.txt</Bold> — текстовый, его можно открыть в Блокноте;</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>.bin</Bold> — бинарный;</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>.dat</Bold> — байтовый.</Paragraph></ListItem>
+                        </List>
+                        <Paragraph>
+                            Файлы взаимозаменяемы и всегда содержат одно и то же. При сохранении записываются все три.
+                            Если при загрузке какой-то файл отсутствует, повреждён или отличается от остальных, программа
+                            сразу создаёт его заново по содержимому остальных и сообщает об этом в строке состояния.
+                            Если повреждены все три файла, программа ничего не перезаписывает и сообщает об ошибке.
+                        </Paragraph>
+                        <Paragraph><Bold>Входной набор (in)</Bold> — файлы, из которых читается список.
+                            Кнопка «Обзор…» (Ctrl+O) выбирает файл и сразу загружает его; можно выбрать любой из трёх —
+                            набор определяется именем. Если путь введён вручную, нажмите «Загрузить» (F5).</Paragraph>
+                        <Paragraph><Bold>Выходной набор (out)</Bold> — файлы, в которые сохраняются изменения.
+                            Кнопка «Обзор…» (Ctrl+Shift+O) позволяет указать и ещё не существующий файл — он будет создан
+                            при первом сохранении. Входной и выходной наборы могут совпадать (так по умолчанию).</Paragraph>
+                        <Paragraph>
+                            По умолчанию используются файлы students.txt / .bin / .dat в папке программы.
+                        </Paragraph>
+                    </FlowDocument>
+                </FlowDocumentScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Карточка">
+                <FlowDocumentScrollViewer>
+                    <FlowDocument>
+                        <Paragraph Style="{StaticResource Heading}">Работа с карточкой</Paragraph>
+                        <Paragraph>
+                            <Bold>Фамилия, имя и группа</Bold> обязательны, отчество — нет.
+                            Оценки вводятся в таблице: «Добавить предмет» добавляет строку, в ней нужно указать название
+                            предмета (обязательно) и выбрать оценку от 2 до 5. Один предмет нельзя указать дважды.
+                            «Удалить предмет» удаляет выделенную строку.
+                        </Paragraph>
+                        <Paragraph>
+                            <Bold>Когда карточка сохраняется.</Bold> Изменения записываются в выходные файлы
+                            <Bold>только при переходе</Bold> на другую карточку (кнопками перехода или командами меню).
+                            Пока вы не перешли, файлы не меняются.
+                        </Paragraph>
+                        <Paragraph>
+                            <Bold>Добавить</Bold> (Ctrl+N) — открывает новую пустую карточку. Новый студент появится в
+                            списке после перехода. Пустая новая карточка при переходе просто отбрасывается.
+                        </Paragraph>
+                        <Paragraph>
+                            <Bold>Очистить (Clear)</Bold> — стирает все поля текущей карточки. Если после этого перейти
+                            на другую карточку, запись этого студента <Bold>будет удалена</Bold> из списка
+                            (об этом предупреждает красная надпись на карточке). Чтобы отменить удаление, заполните
+                            карточку снова до перехода.
+                        </Paragraph>
+                        <Paragraph>
+                            <Bold>Отчислить</Bold> — переносит студента в список отчисленных. Запись не удаляется:
+                            студента можно восстановить.
+                        </Paragraph>
+                    </FlowDocument>
+                </FlowDocumentScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Переход">
+                <FlowDocumentScrollViewer>
+                    <FlowDocument>
+                        <Paragraph Style="{StaticResource Heading}">Переход по карточкам</Paragraph>
+                        <List>
+                            <ListItem><Paragraph><Bold>|&lt; Первая</Bold> (Alt+Home) — к первой карточке списка.</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>&lt; Назад</Bold> (Alt+←) — к предыдущей карточке.</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>Вперёд &gt;</Bold> (Alt+→) — к следующей карточке.</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>Последняя &gt;|</Bold> (Alt+End) — к последней карточке.</Paragraph></ListItem>
+                        </List>
+                        <Paragraph>
+                            Номер текущей карточки показан в строке состояния: «Карточка 2 из 5».
+                            Что происходит при переходе с последней карточки «Вперёд», зависит от флажка
+                            «Цикличная прокрутка» (см. раздел «Флажки»).
+                        </Paragraph>
+                        <Paragraph>
+                            Кнопки, которые сейчас нельзя нажать (например, «Назад» на первой карточке), неактивны.
+                        </Paragraph>
+                    </FlowDocument>
+                </FlowDocumentScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Флажки">
+                <FlowDocumentScrollViewer>
+                    <FlowDocument>
+                        <Paragraph Style="{StaticResource Heading}">Флажки (настройки)</Paragraph>
+                        <Paragraph>
+                            <Bold>Цикличная прокрутка.</Bold> Если флажок снят, «Вперёд» с последней карточки открывает
+                            новую пустую карточку. Если установлен — переходит с последней карточки на первую,
+                            а «Назад» с первой — на последнюю.
+                        </Paragraph>
+                        <Paragraph>
+                            <Bold>Показывать отчисленных студентов при просмотре списка.</Bold> Если установлен,
+                            отчисленные листаются вместе со всеми. Такая карточка помечена надписью «Студент отчислен»
+                            и доступна только для просмотра; вместо «Отчислить» появляется кнопка «Восстановить».
+                        </Paragraph>
+                        <Paragraph>
+                            <Bold>Разрешить одинаковые фамилии в одной группе.</Bold> Если флажок снят, нельзя добавить
+                            студента (или перевести его в группу), если в этой группе уже учится студент с такой же
+                            фамилией. Регистр букв не учитывается. Уже существующие однофамильцы не мешают работе.
+                        </Paragraph>
+                        <Paragraph>
+                            <Bold>Запомнить состояние программы при закрытии.</Bold> Если установлен, при следующем запуске
+                            программа откроется в том же виде: с теми же файлами, на той же карточке (вместе с
+                            несохранёнными правками), с теми же флажками, в том же положении окна и с открытым окном
+                            отчисленных, если оно было открыто.
+                        </Paragraph>
+                        <Paragraph>Все флажки продублированы в меню.</Paragraph>
+                    </FlowDocument>
+                </FlowDocumentScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Отчисленные">
+                <FlowDocumentScrollViewer>
+                    <FlowDocument>
+                        <Paragraph Style="{StaticResource Heading}">Окно отчисленных студентов</Paragraph>
+                        <Paragraph>
+                            Открывается кнопкой «Отчисленные…» или через меню «Студенты → Список отчисленных…» (Ctrl+E).
+                            Показывает всех отчисленных с группой, средним баллом и датой отчисления.
+                        </Paragraph>
+                        <Paragraph>
+                            Выделите одного или нескольких студентов (щелчок с Ctrl или Shift, «Выделить всё»), затем:
+                        </Paragraph>
+                        <List>
+                            <ListItem><Paragraph><Bold>Восстановить</Bold> — вернуть выделенных в список обучающихся.</Paragraph></ListItem>
+                            <ListItem><Paragraph><Bold>Удалить…</Bold> (Delete) — удалить выделенных безвозвратно.
+                                Программа попросит подтверждение; отменить удаление нельзя.</Paragraph></ListItem>
+                        </List>
+                        <Paragraph>Все действия сразу сохраняются в выходные файлы.</Paragraph>
+                    </FlowDocument>
+                </FlowDocumentScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Клавиши">
+                <FlowDocumentScrollViewer>
+                    <FlowDocument>
+                        <Paragraph Style="{StaticResource Heading}">Горячие клавиши</Paragraph>
+                        <Table CellSpacing="0" BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}" BorderThickness="1">
+                            <Table.Columns>
+                                <TableColumn Width="150" />
+                                <TableColumn />
+                            </Table.Columns>
+                            <TableRowGroup>
+                                <TableRow FontWeight="Bold" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                                    <TableCell Padding="4"><Paragraph Margin="0">Клавиши</Paragraph></TableCell>
+                                    <TableCell Padding="4"><Paragraph Margin="0">Действие</Paragraph></TableCell>
+                                </TableRow>
+                                <TableRow><TableCell Padding="4"><Paragraph Margin="0">F1</Paragraph></TableCell><TableCell Padding="4"><Paragraph Margin="0">Эта справка</Paragraph></TableCell></TableRow>
+                                <TableRow><TableCell Padding="4"><Paragraph Margin="0">Ctrl+O</Paragraph></TableCell><TableCell Padding="4"><Paragraph Margin="0">Выбрать и загрузить входной набор</Paragraph></TableCell></TableRow>
+                                <TableRow><TableCell Padding="4"><Paragraph Margin="0">Ctrl+Shift+O</Paragraph></TableCell><TableCell Padding="4"><Paragraph Margin="0">Выбрать выходной набор</Paragraph></TableCell></TableRow>
+                                <TableRow><TableCell Padding="4"><Paragraph Margin="0">F5</Paragraph></TableCell><TableCell Padding="4"><Paragraph Margin="0">Загрузить из входного набора</Paragraph></TableCell></TableRow>
+                                <TableRow><TableCell Padding="4"><Paragraph Margin="0">Ctrl+N</Paragraph></TableCell><TableCell Padding="4"><Paragraph Margin="0">Добавить студента</Paragraph></TableCell></TableRow>
+                                <TableRow><TableCell Padding="4"><Paragraph Margin="0">Ctrl+E</Paragraph></TableCell><TableCell Padding="4"><Paragraph Margin="0">Окно отчисленных</Paragraph></TableCell></TableRow>
+                                <TableRow><TableCell Padding="4"><Paragraph Margin="0">Alt+Home / Alt+End</Paragraph></TableCell><TableCell Padding="4"><Paragraph Margin="0">Первая / последняя карточка</Paragraph></TableCell></TableRow>
+                                <TableRow><TableCell Padding="4"><Paragraph Margin="0">Alt+← / Alt+→</Paragraph></TableCell><TableCell Padding="4"><Paragraph Margin="0">Предыдущая / следующая карточка</Paragraph></TableCell></TableRow>
+                                <TableRow><TableCell Padding="4"><Paragraph Margin="0">Alt+F4</Paragraph></TableCell><TableCell Padding="4"><Paragraph Margin="0">Выход</Paragraph></TableCell></TableRow>
+                                <TableRow><TableCell Padding="4"><Paragraph Margin="0">Delete</Paragraph></TableCell><TableCell Padding="4"><Paragraph Margin="0">В окне отчисленных — удалить выделенных</Paragraph></TableCell></TableRow>
+                            </TableRowGroup>
+                        </Table>
+                        <Paragraph Margin="0,10,0,0">
+                            Подчёркнутая буква в названии поля, кнопки или пункта меню вместе с Alt переводит на него
+                            (например, Alt+А — поле «Фамилия», Alt+Ф — меню «Файл»). Буквы видны при нажатой Alt.
+                        </Paragraph>
+                    </FlowDocument>
+                </FlowDocumentScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

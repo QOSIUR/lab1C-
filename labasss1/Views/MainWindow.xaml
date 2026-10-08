@@ -3,10 +3,286 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:labasss1"
+        xmlns:vm="clr-namespace:labasss1.ViewModels"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        d:DataContext="{d:DesignInstance vm:MainViewModel}"
+        Title="Карточки студентов" Height="700" Width="680" MinHeight="620" MinWidth="600"
+        WindowStartupLocation="CenterScreen"
+        Style="{StaticResource ClassicWindowStyle}">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </Window.Resources>
+    <!-- Горячие клавиши — те же команды, что у меню и кнопок. -->
+    <Window.InputBindings>
+        <KeyBinding Gesture="F1" Command="{Binding HelpCommand}" />
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding BrowseInputCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+O" Command="{Binding BrowseOutputCommand}" />
+        <KeyBinding Gesture="F5" Command="{Binding LoadCommand}" />
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding AddCommand}" />
+        <KeyBinding Gesture="Ctrl+E" Command="{Binding ShowExpelledWindowCommand}" />
+        <KeyBinding Gesture="Alt+Home" Command="{Binding FirstCommand}" />
+        <KeyBinding Gesture="Alt+Left" Command="{Binding PreviousCommand}" />
+        <KeyBinding Gesture="Alt+Right" Command="{Binding NextCommand}" />
+        <KeyBinding Gesture="Alt+End" Command="{Binding LastCommand}" />
+    </Window.InputBindings>
+    <DockPanel>
 
-    </Grid>
+        <!-- Меню дублирует весь функционал окна. Пункты меню, кнопки и горячие клавиши ссылаются
+             на одни и те же команды MainViewModel — логика в одном месте. -->
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_Файл">
+                <MenuItem Header="Выбрать _входной набор…" Command="{Binding BrowseInputCommand}" InputGestureText="Ctrl+O" />
+                <MenuItem Header="Выбрать в_ыходной набор…" Command="{Binding BrowseOutputCommand}" InputGestureText="Ctrl+Shift+O" />
+                <MenuItem Header="_Загрузить из входного набора" Command="{Binding LoadCommand}" InputGestureText="F5" />
+                <Separator />
+                <MenuItem Header="Запо_мнить состояние при закрытии" IsCheckable="True" IsChecked="{Binding RestoreOnStartup}" />
+                <Separator />
+                <MenuItem Header="В_ыход" Command="{Binding ExitCommand}" InputGestureText="Alt+F4" />
+            </MenuItem>
+            <MenuItem Header="_Карточка">
+                <MenuItem Header="_Добавить студента" Command="{Binding AddCommand}" InputGestureText="Ctrl+N" />
+                <Separator />
+                <MenuItem Header="Добавить _предмет" Command="{Binding CurrentCard.AddGradeCommand}" />
+                <MenuItem Header="_Удалить предмет" Command="{Binding CurrentCard.RemoveGradeCommand}" />
+                <MenuItem Header="_Очистить карточку (Clear)" Command="{Binding CurrentCard.ClearCommand}" />
+                <Separator />
+                <MenuItem Header="О_тчислить" Command="{Binding ExpelCommand}" />
+                <MenuItem Header="_Восстановить" Command="{Binding RestoreCurrentCommand}" />
+            </MenuItem>
+            <MenuItem Header="_Переход">
+                <MenuItem Header="_Первая карточка" Command="{Binding FirstCommand}" InputGestureText="Alt+Home" />
+                <MenuItem Header="П_редыдущая карточка" Command="{Binding PreviousCommand}" InputGestureText="Alt+←" />
+                <MenuItem Header="_Следующая карточка" Command="{Binding NextCommand}" InputGestureText="Alt+→" />
+                <MenuItem Header="П_оследняя карточка" Command="{Binding LastCommand}" InputGestureText="Alt+End" />
+                <Separator />
+                <MenuItem Header="_Цикличная прокрутка" IsCheckable="True" IsChecked="{Binding IsCyclic}" />
+            </MenuItem>
+            <MenuItem Header="_Студенты">
+                <MenuItem Header="Список _отчисленных…" Command="{Binding ShowExpelledWindowCommand}" InputGestureText="Ctrl+E" />
+                <Separator />
+                <MenuItem Header="_Показывать отчисленных при просмотре" IsCheckable="True" IsChecked="{Binding ShowExpelled}" />
+                <MenuItem Header="_Разрешить одинаковые фамилии в группе" IsCheckable="True" IsChecked="{Binding AllowSameLastName}" />
+            </MenuItem>
+            <!-- «_С» уже занята меню «Студенты», поэтому у справки — Alt+Р. -->
+            <MenuItem Header="Сп_равка">
+                <MenuItem Header="_Руководство пользователя" Command="{Binding HelpCommand}" InputGestureText="F1" />
+                <Separator />
+                <MenuItem Header="_О программе" Command="{Binding AboutCommand}" />
+            </MenuItem>
+        </Menu>
+
+        <!-- Строка состояния: позиция, ошибка (красным) или информационное сообщение -->
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBar.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <DockPanel LastChildFill="True" />
+                </ItemsPanelTemplate>
+            </StatusBar.ItemsPanel>
+            <StatusBarItem DockPanel.Dock="Left" MinWidth="200">
+                <TextBlock Text="{Binding PositionText}" />
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Left" />
+            <StatusBarItem>
+                <TextBlock TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="{Binding ErrorMessage}" />
+                            <Setter Property="Foreground" Value="Firebrick" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ErrorMessage}" Value="{x:Null}">
+                                    <Setter Property="Text" Value="{Binding StatusMessage}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StatusBarItem>
+        </StatusBar>
+
+        <Grid Margin="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Пути к in и out файлам -->
+            <GroupBox Grid.Row="0" Header="Файлы списка (.txt, .bin, .dat с одним именем — взаимозаменяемы)" Padding="6" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Label Grid.Row="0" Content="_Входной набор (in):" Target="{Binding ElementName=InputPathBox}"
+                           VerticalAlignment="Center" />
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="InputPathBox" Margin="0,2,6,2"
+                             ToolTip="Путь к любому из файлов набора (.txt, .bin, .dat) — из него читается список"
+                             VerticalContentAlignment="Center"
+                             Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Grid.Row="0" Grid.Column="2" Content="Обзор…" Margin="0,2,6,2" Command="{Binding BrowseInputCommand}"
+                            ToolTip="Выбрать файл (.txt, .bin или .dat) и сразу загрузить список из него (Ctrl+O)" />
+                    <Button Grid.Row="0" Grid.Column="3" Content="Загрузить" Margin="0,2" Command="{Binding LoadCommand}"
+                            ToolTip="Загрузить список из входного набора, путь к которому введён слева (F5)" />
+
+                    <Label Grid.Row="1" Content="В_ыходной набор (out):" Target="{Binding ElementName=OutputPathBox}"
+                           VerticalAlignment="Center" />
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="OutputPathBox" Margin="0,2,6,2"
+                             ToolTip="Путь к набору, в который сохраняются изменения (записываются все три формата)"
+                             VerticalContentAlignment="Center"
+                             Text="{Binding OutputPath, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Grid.Row="1" Grid.Column="2" Content="Обзор…" Margin="0,2,6,2" Command="{Binding BrowseOutputCommand}"
+                            ToolTip="Выбрать файл, в который сохранять изменения; можно указать ещё не существующий (Ctrl+Shift+O)" />
+                </Grid>
+            </GroupBox>
+
+            <!-- Сама карточка -->
+            <GroupBox Grid.Row="1" Header="Карточка студента" Padding="6" DataContext="{Binding CurrentCard}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.Resources>
+                        <Style TargetType="Label" BasedOn="{StaticResource {x:Type Label}}">
+                            <Setter Property="VerticalAlignment" Value="Center" />
+                            <Setter Property="Margin" Value="0,0,6,0" />
+                        </Style>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                            <Setter Property="Margin" Value="0,2" />
+                            <Setter Property="VerticalContentAlignment" Value="Center" />
+                            <Setter Property="MinHeight" Value="21" />
+                            <Setter Property="IsReadOnly" Value="{Binding IsReadOnly}" />
+                        </Style>
+                    </Grid.Resources>
+
+                    <Label Grid.Row="0" Content="Ф_амилия*:" Target="{Binding ElementName=LastNameBox}" />
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="LastNameBox"
+                             Text="{Binding LastName, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <Label Grid.Row="1" Content="_Имя*:" Target="{Binding ElementName=FirstNameBox}" />
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="FirstNameBox"
+                             Text="{Binding FirstName, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <Label Grid.Row="2" Content="_Отчество:" Target="{Binding ElementName=PatronymicBox}" />
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="PatronymicBox"
+                             Text="{Binding Patronymic, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <Label Grid.Row="3" Content="_Группа*:" Target="{Binding ElementName=GroupNameBox}" />
+                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="GroupNameBox"
+                             Text="{Binding Group, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <Label Grid.Row="4" Grid.ColumnSpan="2" Content="Оценки по предметам:" Margin="0,4,0,0" />
+
+                    <DataGrid Grid.Row="5" Grid.ColumnSpan="2"
+                              ItemsSource="{Binding Grades}" SelectedItem="{Binding SelectedGrade}"
+                              AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                              HeadersVisibility="Column" GridLinesVisibility="All" IsReadOnly="{Binding IsReadOnly}"
+                              Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Предмет*" Width="*"
+                                                Binding="{Binding Subject, UpdateSourceTrigger=PropertyChanged}" />
+                            <DataGridComboBoxColumn Header="Оценка" Width="90"
+                                                    ItemsSource="{x:Static vm:GradeRowViewModel.AllowedGrades}"
+                                                    SelectedItemBinding="{Binding Grade, UpdateSourceTrigger=PropertyChanged}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <DockPanel Grid.Row="6" Grid.ColumnSpan="2" Margin="0,6,0,0">
+                        <Button DockPanel.Dock="Right" Content="Очистить (_Clear)" Command="{Binding ClearCommand}"
+                                ToolTip="Стереть все поля карточки. При переходе на другую карточку запись студента будет удалена." />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Добавить предмет" Command="{Binding AddGradeCommand}" Margin="0,0,6,0"
+                                    ToolTip="Добавить строку оценки: укажите предмет и выберите оценку 2–5" />
+                            <Button Content="Удалить предмет" Command="{Binding RemoveGradeCommand}"
+                                    ToolTip="Удалить выделенную в таблице строку оценки" />
+                        </StackPanel>
+                    </DockPanel>
+
+                    <TextBlock Grid.Row="7" Grid.ColumnSpan="2" Margin="0,6,0,0" Foreground="Firebrick" TextWrapping="Wrap"
+                               Text="Карточка очищена: при переходе на следующую или предыдущую карточку запись студента будет стёрта."
+                               Visibility="{Binding IsMarkedForDeletion, Converter={StaticResource BoolToVisibility}}" />
+
+                    <TextBlock Grid.Row="7" Grid.ColumnSpan="2" Margin="0,6,0,0" Foreground="Firebrick" TextWrapping="Wrap"
+                               FontWeight="Bold" Text="{Binding ExpelledText}"
+                               Visibility="{Binding IsReadOnly, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+            </GroupBox>
+
+            <StackPanel Grid.Row="2" Margin="0,4,0,0">
+                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                           Text="Карточка сохраняется в выходные файлы (.txt, .bin, .dat) только при переходе на следующую или предыдущую карточку." />
+                <!-- Чекбокс 2: цикличная прокрутка списка -->
+                <CheckBox Content="_Цикличная прокрутка (после последней карточки — первая, иначе — новая пустая)"
+                          IsChecked="{Binding IsCyclic}" Margin="0,6,0,0"
+                          ToolTip="Установлен: «Вперёд» с последней карточки переходит на первую, «Назад» с первой — на последнюю.&#x0a;Сброшен: «Вперёд» с последней карточки создаёт новую пустую карточку." />
+                <!-- Чекбокс 4: отчисленные в листании -->
+                <CheckBox Content="Показывать от_численных студентов при просмотре списка"
+                          IsChecked="{Binding ShowExpelled}" Margin="0,4,0,0"
+                          ToolTip="Карточки отчисленных показываются в общем списке только для просмотра; изменить такую карточку можно, восстановив студента." />
+                <!-- Чекбокс 3: однофамильцы в одной группе -->
+                <CheckBox Content="Разрешить одинаковые фамилии в одной гр_уппе"
+                          IsChecked="{Binding AllowSameLastName}" Margin="0,4,0,0"
+                          ToolTip="Сброшен: нельзя сохранить студента, если в его группе уже есть обучающийся с такой же фамилией." />
+                <!-- Чекбокс 1: восстановление состояния при следующем запуске -->
+                <CheckBox Content="_Запомнить состояние программы при закрытии и восстановить при следующем запуске"
+                          IsChecked="{Binding RestoreOnStartup}" Margin="0,4,0,0"
+                          ToolTip="Пути к файлам, открытая карточка (вместе с несохранёнными правками), положение окон" />
+            </StackPanel>
+
+            <!-- Навигация и действия -->
+            <DockPanel Grid.Row="3" Margin="0,8,0,0">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <Button Content="|&lt; Первая" Command="{Binding FirstCommand}" Margin="0,0,4,0"
+                            ToolTip="К первой карточке" />
+                    <Button Content="&lt; Назад" Command="{Binding PreviousCommand}" Margin="0,0,4,0"
+                            ToolTip="К предыдущей карточке" />
+                    <Button Content="Вперёд &gt;" Command="{Binding NextCommand}" Margin="0,0,4,0"
+                            ToolTip="К следующей карточке" />
+                    <Button Content="Последняя &gt;|" Command="{Binding LastCommand}"
+                            ToolTip="К последней карточке" />
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Добавить" Command="{Binding AddCommand}" Margin="0,0,4,0"
+                            ToolTip="Новая карточка студента" />
+                    <Button Content="Отчислить" Command="{Binding ExpelCommand}" Margin="0,0,4,0"
+                            ToolTip="Перенести студента в список отчисленных (запись сохраняется, его можно восстановить)">
+                        <!-- На карточке отчисленного вместо «Отчислить» показывается «Восстановить». -->
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentCard.IsReadOnly}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="Восстановить" Command="{Binding RestoreCurrentCommand}" Margin="0,0,4,0"
+                            Visibility="{Binding CurrentCard.IsReadOnly, Converter={StaticResource BoolToVisibility}}"
+                            ToolTip="Вернуть отчисленного студента в список обучающихся" />
+                    <Button Content="Отчисленные…" Command="{Binding ShowExpelledWindowCommand}"
+                            ToolTip="Окно со списком отчисленных: восстановление и безвозвратное удаление (Ctrl+E)" />
+                </StackPanel>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
 </Window>

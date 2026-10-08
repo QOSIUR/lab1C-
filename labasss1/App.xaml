@@ -1,9 +1,27 @@
 ﻿<Application x:Class="labasss1.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:labasss1"
-             StartupUri="MainWindow.xaml">
+             xmlns:local="clr-namespace:labasss1">
     <Application.Resources>
-         
+        <ResourceDictionary>
+            <!-- Классическая тема Windows (объёмные кнопки и рамки) для всех окон приложения. -->
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/PresentationFramework.Classic;component/themes/Classic.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Неявный стиль Window не действует на наследников, поэтому окна подключают его по ключу. -->
+            <Style x:Key="ClassicWindowStyle" TargetType="Window">
+                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="FontFamily" Value="Tahoma" />
+                <Setter Property="FontSize" Value="12" />
+            </Style>
+
+            <!-- Стандартный размер кнопки Windows: 75×23. -->
+            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="MinWidth" Value="75" />
+                <Setter Property="MinHeight" Value="23" />
+                <Setter Property="Padding" Value="8,1" />
+            </Style>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

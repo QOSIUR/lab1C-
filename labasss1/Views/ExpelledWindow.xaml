@@ -1,0 +1,64 @@
+﻿<Window x:Class="labasss1.Views.ExpelledWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:labasss1.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance vm:MainViewModel}"
+        Title="Отчисленные студенты" Height="420" Width="680" MinHeight="300" MinWidth="520"
+        WindowStartupLocation="CenterOwner"
+        Style="{StaticResource ClassicWindowStyle}">
+    <DockPanel>
+
+        <!-- Строка состояния: количество и ошибки сохранения -->
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBar.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <DockPanel LastChildFill="True" />
+                </ItemsPanelTemplate>
+            </StatusBar.ItemsPanel>
+            <StatusBarItem DockPanel.Dock="Left" MinWidth="200">
+                <TextBlock>
+                    <Run Text="Отчислено: " /><Run Text="{Binding ExpelledStudents.Count, Mode=OneWay}"
+                    /><Run Text=", выделено: " /><Run Text="{Binding SelectedItems.Count, ElementName=ExpelledGrid, Mode=OneWay}" />
+                </TextBlock>
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Left" />
+            <StatusBarItem>
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="Firebrick" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding ErrorMessage}" />
+            </StatusBarItem>
+        </StatusBar>
+
+        <!-- Кнопки действий -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="8,0,8,8">
+            <Button DockPanel.Dock="Right" Content="Закрыть" IsCancel="True" Click="Close_Click" />
+            <StackPanel Orientation="Horizontal">
+                <Button Content="_Восстановить" Margin="0,0,4,0"
+                        Command="{Binding RestoreCommand}"
+                        CommandParameter="{Binding SelectedItems, ElementName=ExpelledGrid}"
+                        ToolTip="Вернуть выделенных студентов в список обучающихся" />
+                <Button Content="_Удалить…" Margin="0,0,4,0" Click="Delete_Click"
+                        ToolTip="Удалить выделенных студентов безвозвратно (Delete)" />
+                <Button Content="Выделить _всё" Click="SelectAll_Click" />
+            </StackPanel>
+        </DockPanel>
+
+        <Label DockPanel.Dock="Top" Margin="8,4,8,0" Padding="0,4"
+               Content="Выделите одного или нескольких студентов (Ctrl или Shift + щелчок)." />
+
+        <DataGrid x:Name="ExpelledGrid" Margin="8,4,8,8" ItemsSource="{Binding ExpelledStudents}"
+                  AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                  SelectionMode="Extended" SelectionUnit="FullRow" GridLinesVisibility="All"
+                  Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                  PreviewKeyDown="ExpelledGrid_PreviewKeyDown">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ФИО" Binding="{Binding FullName}" Width="*" />
+                <DataGridTextColumn Header="Группа" Binding="{Binding Group}" Width="90" />
+                <DataGridTextColumn Header="Ср. балл" Binding="{Binding AverageGrade, StringFormat=N2}" Width="70" />
+                <DataGridTextColumn Header="Отчислен" Binding="{Binding ExpelledAt, StringFormat=dd.MM.yyyy}" Width="90" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>
