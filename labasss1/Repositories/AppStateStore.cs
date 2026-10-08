@@ -2,7 +2,7 @@ using System.IO;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
-namespace labasss1.Services;
+namespace labasss1.Repositories;
 
 /// <summary>Снимок состояния программы, сохраняемый при закрытии.</summary>
 public class AppState

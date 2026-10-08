@@ -49,7 +49,8 @@ public partial class App : Application
 
         // Окно создаём раньше ViewModel: оно же реализует диалоги и открытие окон (IUiService).
         var window = new MainWindow();
-        var viewModel = new MainViewModel(repository, window, loaded, inputPath, outputPath)
+        var registry = new StudentRegistry(loaded);
+        var viewModel = new MainViewModel(repository, registry, window, inputPath, outputPath)
         {
             RestoreOnStartup = state.RestoreOnStartup,
             IsCyclic = restore && state.IsCyclic,

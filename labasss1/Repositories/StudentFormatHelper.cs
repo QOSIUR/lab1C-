@@ -1,6 +1,7 @@
 using System.IO;
 using System.Security.Cryptography;
 using labasss1.Models;
+using labasss1.Services;
 
 namespace labasss1.Repositories;
 
@@ -25,30 +26,25 @@ internal static class StudentFormatHelper
     }
 
     /// <summary>
-    /// Собирает студента из прочитанных полей. Одинаковые проверки во всех форматах гарантируют,
-    /// что «прочиталось» означает «данные целы», а не просто «байты разобрались».
+    /// Собирает студента из прочитанных полей. Те же правила, что и для карточки на экране
+    /// (<see cref="StudentValidator"/>), гарантируют, что «прочиталось» означает «данные целы»,
+    /// а не просто «байты разобрались».
     /// </summary>
     public static Student CreateStudent(Guid id, string lastName, string firstName, string? patronymic,
         string group, bool expelled, DateTime? expelledAt, IEnumerable<(string Subject, int Grade)> grades)
     {
-        if (TextNormalizer.IsBlank(lastName)) throw new FormatException("У студента не указана фамилия.");
-        if (TextNormalizer.IsBlank(firstName)) throw new FormatException($"У студента «{lastName}» не указано имя.");
-        if (TextNormalizer.IsBlank(group)) throw new FormatException($"У студента «{lastName}» не указана группа.");
+        var draft = new StudentDraft(lastName, firstName, patronymic, group,
+            grades.Select(g => new GradeDraft(g.Subject, g.Grade)).ToList());
+        var error = StudentValidator.Validate(draft);
+        if (error != null)
+            throw new FormatException($"Студент «{TextNormalizer.Normalize(lastName)}»: {error}");
+
+        // Это правило касается только файла: в карточке признак и дату отчисления не вводят руками.
         if (expelled != expelledAt.HasValue)
-            throw new FormatException($"У студента «{lastName}» дата отчисления не соответствует признаку отчисления.");
+            throw new FormatException($"Студент «{lastName}»: дата отчисления не соответствует признаку отчисления.");
 
-        var student = new Student(lastName, firstName, group, patronymic) { Id = id };
-        foreach (var (subject, grade) in grades)
-        {
-            if (TextNormalizer.IsBlank(subject))
-                throw new FormatException($"У студента «{lastName}» пустое название предмета.");
-            if (grade is < SubjectGrade.MinGrade or > SubjectGrade.MaxGrade)
-                throw new FormatException($"У студента «{lastName}» недопустимая оценка {grade}.");
-            if (student.Grades.Any(g => string.Equals(g.Subject, TextNormalizer.Normalize(subject), StringComparison.OrdinalIgnoreCase)))
-                throw new FormatException($"У студента «{lastName}» предмет «{subject}» указан дважды.");
-            student.Grades.Add(new SubjectGrade(subject, grade));
-        }
-
+        var student = new Student { Id = id };
+        draft.ApplyTo(student);
         if (expelled) student.Expel(expelledAt);
         return student;
     }

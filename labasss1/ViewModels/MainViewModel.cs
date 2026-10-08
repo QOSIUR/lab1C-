@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Windows.Data;
+using System.Windows.Input;
 using labasss1.Models;
 using labasss1.Repositories;
 using labasss1.Services;
@@ -11,33 +12,34 @@ namespace labasss1.ViewModels;
 /// <summary>
 /// Листание карточек студентов (1 карточка = 1 студент). Студенты читаются из входного (in) файла,
 /// а карточка сохраняется в выходной (out) файл только при переходе на другую карточку.
+/// Правила (проверка данных, однофамильцы, отчисление, удаление) — в <see cref="StudentRegistry"/>;
+/// здесь только навигация, команды, сохранение в файлы и сообщения пользователю.
 /// </summary>
 public class MainViewModel : ViewModelBase
 {
     private readonly StudentFileRepository _repository;
+    private readonly StudentRegistry _registry;
     private readonly IUiService _ui;
-    private readonly ObservableCollection<Student> _students;
     private StudentSetWatcher? _watcher;
     private StudentCardViewModel _currentCard = StudentCardViewModel.CreateEmpty();
     private string? _errorMessage;
     private string? _statusMessage;
     private bool _restoreOnStartup;
     private bool _isCyclic;
-    private bool _allowSameLastName = true;
     private bool _showExpelled;
     private string _inputPath;
     private string _outputPath;
 
-    public MainViewModel(StudentFileRepository repository, IUiService ui, IEnumerable<Student> students,
+    public MainViewModel(StudentFileRepository repository, StudentRegistry registry, IUiService ui,
         string inputPath, string outputPath)
     {
         _repository = repository;
+        _registry = registry;
         _ui = ui;
-        _students = new ObservableCollection<Student>(students);
         _inputPath = inputPath;
         _outputPath = outputPath;
 
-        var expelledView = new ListCollectionView(_students)
+        var expelledView = new ListCollectionView(Students)
         {
             Filter = o => ((Student)o).IsExpelled,
             IsLiveFiltering = true,
@@ -73,6 +75,8 @@ public class MainViewModel : ViewModelBase
         get => _currentCard;
         private set => SetField(ref _currentCard, value);
     }
+
+    private ObservableCollection<Student> Students => _registry.Students;
 
     /// <summary>Отчисленные студенты — для отдельного окна.</summary>
     public ICollectionView ExpelledStudents { get; }
@@ -123,7 +127,7 @@ public class MainViewModel : ViewModelBase
         try
         {
             if (!string.IsNullOrWhiteSpace(OutputPath))
-                messages.AddRange(_repository.Repair(OutputPath, fallback: _students));
+                messages.AddRange(_repository.Repair(OutputPath, fallback: Students));
             if (!string.IsNullOrWhiteSpace(InputPath) && !SameSet(InputPath, OutputPath))
                 messages.AddRange(_repository.Repair(InputPath, fallback: null));
         }
@@ -172,7 +176,7 @@ public class MainViewModel : ViewModelBase
     public bool IsCyclic
     {
         get => _isCyclic;
-        set => SetField(ref _isCyclic, value);
+        set { if (SetField(ref _isCyclic, value)) CommandManager.InvalidateRequerySuggested(); }
     }
 
     /// <summary>
@@ -180,8 +184,13 @@ public class MainViewModel : ViewModelBase
     /// </summary>
     public bool AllowSameLastName
     {
-        get => _allowSameLastName;
-        set => SetField(ref _allowSameLastName, value);
+        get => _registry.AllowSameLastName;
+        set
+        {
+            if (_registry.AllowSameLastName == value) return;
+            _registry.AllowSameLastName = value;
+            OnPropertyChanged();
+        }
     }
 
     /// <summary>
@@ -193,11 +202,13 @@ public class MainViewModel : ViewModelBase
         set
         {
             if (!SetField(ref _showExpelled, value)) return;
+            // От флага зависит, доступны ли кнопки перехода, — пересчитываем сразу, а не при следующем вводе.
+            CommandManager.InvalidateRequerySuggested();
 
             // Открытая карточка отчисленного пропадает из списка — переходим на ближайшего обучающегося.
             if (!value && CurrentCard.Source is { IsExpelled: true } hidden)
             {
-                var next = _students.Skip(_students.IndexOf(hidden) + 1).FirstOrDefault(s => !s.IsExpelled);
+                var next = Students.Skip(Students.IndexOf(hidden) + 1).FirstOrDefault(s => !s.IsExpelled);
                 if (next != null) ShowCard(StudentCardViewModel.FromStudent(next));
                 else ShowLastOrEmpty();
                 return;
@@ -266,7 +277,7 @@ public class MainViewModel : ViewModelBase
     }
 
     /// <summary>Студенты, по которым листаются карточки: обучающиеся, а с чекбоксом 4 — и отчисленные.</summary>
-    private List<Student> VisibleStudents => _students.Where(s => ShowExpelled || !s.IsExpelled).ToList();
+    private List<Student> VisibleStudents => Students.Where(s => ShowExpelled || !s.IsExpelled).ToList();
 
     /// <summary>Позиция текущей карточки среди видимых; новая карточка стоит после последней.</summary>
     private int CurrentIndex => CurrentCard.Source is { } s
@@ -344,8 +355,7 @@ public class MainViewModel : ViewModelBase
         var index = CurrentIndex;
         if (!TryCommitCurrentCard()) return;
 
-        var student = CurrentCard.Source!;
-        student.Expel();
+        _registry.Expel(CurrentCard.Source!);
         if (!TrySave()) return;
 
         // Показываем студента, который встал на место отчисленного, иначе предыдущего.
@@ -358,65 +368,26 @@ public class MainViewModel : ViewModelBase
 
     private void RestoreStudents(IReadOnlyList<Student> students)
     {
-        // Восстановление возвращает студента в группу, поэтому однофамильцев проверяем и здесь.
-        var skipped = new List<string>();
-        foreach (var s in students)
-        {
-            if (!AllowSameLastName && FindNamesake(s.LastName, s.Group, except: s) != null)
-            {
-                skipped.Add(s.FullName);
-                continue;
-            }
-            s.Restore();
-        }
-
-        if (skipped.Count < students.Count) TrySave();
+        var result = _registry.Restore(students);
+        if (result.Restored.Count > 0) TrySave();
 
         // Открыта карточка восстановленного студента — она перестаёт быть только для просмотра.
-        if (CurrentCard.Source is { IsExpelled: false } current && students.Contains(current))
+        if (CurrentCard.Source is { } current && result.Restored.Contains(current))
             ShowCard(StudentCardViewModel.FromStudent(current));
 
-        if (skipped.Count > 0)
-            ErrorMessage = $"Не восстановлены — в группе уже есть студент с такой фамилией: {string.Join(", ", skipped)}.";
+        if (result.Skipped.Count > 0)
+            ErrorMessage = "Не восстановлены — в группе уже есть студент с такой фамилией: " +
+                           $"{string.Join(", ", result.Skipped.Select(s => s.FullName))}.";
         OnPropertyChanged(nameof(PositionText));
     }
-
-    /// <summary>
-    /// Если однофамильцы в группе запрещены, возвращает текст ошибки для карточки, которая
-    /// заводит студента с уже занятой в группе фамилией. Проверяем только новую карточку
-    /// или смену фамилии/группы — уже существующие однофамильцы не мешают листать список.
-    /// </summary>
-    private string? CheckNamesake(StudentCardViewModel card)
-    {
-        if (AllowSameLastName) return null;
-
-        var lastName = TextNormalizer.Normalize(card.LastName);
-        var group = TextNormalizer.Normalize(card.Group);
-        if (card.Source is { } source && SameText(source.LastName, lastName) && SameText(source.Group, group))
-            return null;
-
-        var namesake = FindNamesake(lastName, group, except: card.Source);
-        return namesake == null
-            ? null
-            : $"В группе «{group}» уже есть студент с фамилией «{namesake.LastName}» ({namesake.FullName}). " +
-              "Чтобы добавить однофамильца, отметьте «Разрешить одинаковые фамилии в одной группе».";
-    }
-
-    /// <summary>Обучающийся студент той же группы с той же фамилией (без учёта регистра).</summary>
-    private Student? FindNamesake(string lastName, string group, Student? except) =>
-        _students.FirstOrDefault(s => !s.IsExpelled && s != except &&
-                                      SameText(s.LastName, TextNormalizer.Normalize(lastName)) && SameText(s.Group, TextNormalizer.Normalize(group)));
-
-    private static bool SameText(string a, string b) => string.Equals(a, b, StringComparison.CurrentCultureIgnoreCase);
 
     private void DeleteStudents(IReadOnlyList<Student> students)
     {
         // Удалить могут и открытую сейчас карточку отчисленного — тогда покажем соседнюю.
-        var currentDeleted = CurrentCard.Source is { } current && students.Contains(current);
         var index = CurrentIndex;
-
-        foreach (var s in students) _students.Remove(s);
-        TrySave();
+        var deleted = _registry.DeleteExpelled(students);
+        var currentDeleted = CurrentCard.Source is { } current && deleted.Contains(current);
+        if (deleted.Count > 0) TrySave();
 
         if (currentDeleted)
         {
@@ -480,8 +451,7 @@ public class MainViewModel : ViewModelBase
             return;
         }
 
-        _students.Clear();
-        foreach (var s in loaded.Students) _students.Add(s);
+        _registry.ReplaceAll(loaded.Students);
         ShowFirstOrEmpty();
         StatusMessage = loaded.Messages.Count > 0
             ? string.Join(" ", loaded.Messages)
@@ -489,7 +459,7 @@ public class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Сохраняет текущую карточку: переносит данные в студента и записывает файл.
+    /// Сохраняет текущую карточку (вызывается при уходе с неё): передаёт данные реестру и записывает файлы.
     /// Пустая новая карточка просто отбрасывается, а очищенная (Clear) стирает запись студента.
     /// </summary>
     private bool TryCommitCurrentCard()
@@ -502,22 +472,23 @@ public class MainViewModel : ViewModelBase
 
         if (card.IsMarkedForDeletion)
         {
-            _students.Remove(card.Source!);
+            _registry.Remove(card.Source!);
             CurrentCard = StudentCardViewModel.CreateEmpty();
             return TrySave();
         }
 
-        var error = card.Validate() ?? CheckNamesake(card);
+        var draft = card.ToDraft();
+        var error = _registry.CheckCanSave(draft, card.Source);
         if (error != null)
         {
             ErrorMessage = error;
             return false;
         }
 
-        var student = card.ApplyTo();
+        // Новый студент реестр сам добавляет в конец списка.
+        var student = _registry.Save(draft, card.Source);
         if (card.IsNew)
         {
-            _students.Add(student);
             // Дальше карточка работает с уже сохранённым студентом.
             CurrentCard = StudentCardViewModel.FromStudent(student);
             OnPropertyChanged(nameof(PositionText));
@@ -536,7 +507,7 @@ public class MainViewModel : ViewModelBase
 
         try
         {
-            _repository.Save(OutputPath, _students);
+            _repository.Save(OutputPath, Students);
             ErrorMessage = null;
             return true;
         }

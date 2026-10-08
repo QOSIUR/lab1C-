@@ -1,12 +1,12 @@
 using System.Collections.ObjectModel;
 using labasss1.Models;
-using labasss1.Services;
+using labasss1.Repositories;
 
 namespace labasss1.ViewModels;
 
 /// <summary>
 /// Карточка студента — буфер редактирования. Изменения попадают в <see cref="Student"/>
-/// только при вызове <see cref="ApplyTo"/>, то есть при переходе на другую карточку.
+/// только при переходе на другую карточку: тогда <see cref="ToDraft"/> передаётся реестру студентов.
 /// </summary>
 public class StudentCardViewModel : ViewModelBase
 {
@@ -144,45 +144,12 @@ public class StudentCardViewModel : ViewModelBase
         return card;
     }
 
-    /// <summary>Возвращает текст ошибки или null, если карточку можно сохранить.</summary>
-    public string? Validate()
-    {
-        if (TextNormalizer.IsBlank(LastName)) return "Укажите фамилию.";
-        if (TextNormalizer.IsBlank(FirstName)) return "Укажите имя.";
-        if (TextNormalizer.IsBlank(Group)) return "Укажите группу.";
-
-        var emptyRow = Grades.FirstOrDefault(g => TextNormalizer.IsBlank(g.Subject));
-        if (emptyRow != null)
-            return $"Укажите название предмета в строке {Grades.IndexOf(emptyRow) + 1} таблицы оценок " +
-                   "или удалите эту строку.";
-
-        var subjects = Grades.Select(g => TextNormalizer.Normalize(g.Subject)).ToList();
-        var duplicate = subjects
-            .GroupBy(s => s, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(grp => grp.Count() > 1);
-        if (duplicate != null) return $"Предмет «{duplicate.Key}» указан несколько раз.";
-
-        return null;
-    }
-
     /// <summary>
-    /// Переносит данные карточки в студента (создаёт нового, если карточка новая) и возвращает его.
-    /// Вызывается только после успешной <see cref="Validate"/>, поэтому у всех строк есть предмет.
+    /// Введённые в карточку данные. Проверку и сохранение выполняет <see cref="Services.StudentRegistry"/>.
     /// </summary>
-    public Student ApplyTo()
-    {
-        var student = Source ?? new Student();
-        student.LastName = LastName;
-        student.FirstName = FirstName;
-        student.Patronymic = Patronymic;
-        student.Group = Group;
-
-        student.Grades.Clear();
-        foreach (var row in Grades)
-            student.Grades.Add(new SubjectGrade(row.Subject, row.Grade));
-
-        return student;
-    }
+    public StudentDraft ToDraft() => new(
+        LastName, FirstName, Patronymic, Group,
+        Grades.Select(g => new GradeDraft(g.Subject, g.Grade)).ToList());
 }
 
 public class GradeRowViewModel : ViewModelBase

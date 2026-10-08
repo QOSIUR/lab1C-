@@ -1,4 +1,4 @@
-namespace labasss1.Services;
+namespace labasss1.ViewModels;
 
 /// <summary>
 /// Действия, которые требуют окон WPF (диалоги, другие окна). ViewModel вызывает их через этот
